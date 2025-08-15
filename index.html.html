@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NYC DOB Monitor — Any Address</title>
+<style>
+:root{--bg:#f7f7f8;--card:#ffffff;--text:#111;--muted:#6b7280}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--text)}
+header{position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;z-index:10}
+.wrap{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 8px}
+.grid{display:grid;gap:14px;grid-template-columns:1fr}
+@media(min-width:820px){.grid{grid-template-columns:1fr 1fr}}
+.card{background:var(--card);border:1px solid #ececec;border-radius:14px;overflow:hidden}
+.pad{padding:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.addr{font-weight:600}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+input,select{width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}
+.btn{appearance:none;border:1px solid #111;background:#111;color:#fff;padding:10px 12px;border-radius:10px;cursor:pointer}
+.btn.ghost{background:#fff;color:#111}
+.btn.small{padding:8px 10px;font-size:13px}
+.counts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.count{background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px}
+.count h3{margin:0;font-size:13px;color:var(--muted)}
+.count .n{font-size:22px;font-weight:700;margin-top:6px}
+.links{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.notice{background:#fff6d6;border:1px solid #fde68a;color:#8a6515;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:13px}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+hr{border:0;border-top:1px solid #eee;margin:12px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>NYC DOB Monitor</h1>
+    <p class="sub">Type an address. Get counts (via NYC Open Data) + one‑tap BIS/DOB NOW links. White/grey, phone‑ready.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <div class="pad">
+      <div class="row">
+        <div style="flex:1;min-width:200px">
+          <label>NYC Geoclient <strong>app_id</strong> (optional)</label>
+          <input id="geo_id" placeholder="paste if you have one">
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label>NYC Geoclient <strong>app_key</strong> (optional)</label>
+          <input id="geo_key" type="password" placeholder="paste if you have one">
+        </div>
+        <div style="flex:1;min-width:220px">
+          <label>NYC Open Data <strong>app token</strong> (optional)</label>
+          <input id="socrata_token" placeholder="paste if you have one">
+        </div>
+      </div>
+      <div class="notice">No keys? It still works with BIS/DOB NOW links. Keys enable auto‑counts using NYC Open Data.</div>
+      <hr>
+      <div class="row">
+        <div style="width:110px">
+          <label>House #</label>
+          <input id="house" placeholder="e.g. 801">
+        </div>
+        <div style="flex:1;min-width:220px">
+          <label>Street</label>
+          <input id="street" placeholder="e.g. Greenwich St">
+        </div>
+        <div style="width:180px">
+          <label>Borough</label>
+          <select id="borough">
+            <option>Manhattan</option>
+            <option>Brooklyn</option>
+            <option>Queens</option>
+            <option>Bronx</option>
+            <option>Staten Island</option>
+          </select>
+        </div>
+        <div style="width:180px">
+          <label>BIN (optional)</label>
+          <input id="bin" placeholder="if you know it">
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button class="btn" id="add">Add Card</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid" id="cards"></section>
+
+  <div class="mono" style="margin-top:16px">
+    Datasets (subject to schema changes): DOB Permit Issuance (ipu4‑2q9a). Counts are best‑effort approximations.<br>
+    Tip: If Geoclient keys are filled, we’ll resolve BIN automatically.
+  </div>
+</main>
+
+<script>
+const $=(q)=>document.querySelector(q);
+const el=(t,c,txt)=>{const n=document.createElement(t); if(c) n.className=c; if(txt) n.textContent=txt; return n;};
+
+$("#add").onclick = ()=>{
+  const house=$("#house").value.trim();
+  const street=$("#street").value.trim();
+  const borough=$("#borough").value.trim();
+  let bin=$("#bin").value.trim();
+  if(!house || !street || !borough){ alert("Enter house, street, and borough."); return; }
+  const label = `${house} ${street}, ${borough}`;
+
+  const idx = document.querySelectorAll(".card[data-type='addr']").length;
+  const card = el("div","card"); card.dataset.type="addr";
+  const pad = el("div","pad");
+  pad.appendChild(el("div","addr",label));
+
+  // counts
+  const counts = el("div","counts");
+  counts.innerHTML = `
+    <div class="count"><h3>Open Permits</h3><div class="n" id="perm_${idx}">—</div></div>
+    <div class="count"><h3>Signed‑off Jobs</h3><div class="n" id="jobs_${idx}">—</div></div>
+    <div class="count"><h3>Pending Inspections</h3><div class="n" id="insp_${idx}">—</div></div>`;
+  pad.appendChild(counts);
+
+  // links
+  const links=el("div","links");
+  const bis='https://a810-bisweb.nyc.gov/bisweb/bispi00.jsp';
+  const dobnow='https://www.nyc.gov/site/buildings/dob/dob-now-public-portal.page';
+  const l1 = el("a","btn small ghost"); l1.href=bis; l1.target="_blank"; l1.rel="noopener"; l1.textContent="Open BIS";
+  const l2 = el("a","btn small ghost"); l2.href=dobnow; l2.target="_blank"; l2.rel="noopener"; l2.textContent="Open DOB NOW";
+  links.appendChild(l1); links.appendChild(l2);
+  const go = el("button","btn small"); go.textContent="Fetch Counts"; go.onclick=()=>fetchCounts(idx, {house,street,borough}, bin);
+  links.appendChild(go);
+  pad.appendChild(links);
+
+  card.appendChild(pad);
+  $("#cards").appendChild(card);
+};
+
+async function fetchCounts(idx, addr, binManual){
+  const geo_id=$("#geo_id").value.trim();
+  const geo_key=$("#geo_key").value.trim();
+  const socrata=$("#socrata_token").value.trim();
+  let BIN = (binManual||"").trim();
+
+  if(!BIN && geo_id && geo_key){
+    const url=`https://api.cityofnewyork.us/geoclient/v1/address.json?houseNumber=${encodeURIComponent(addr.house)}&street=${encodeURIComponent(addr.street)}&borough=${encodeURIComponent(addr.borough)}&app_id=${encodeURIComponent(geo_id)}&app_key=${encodeURIComponent(geo_key)}`;
+    try{ const r=await fetch(url); const j=await r.json(); BIN = j?.address?.buildingIdentificationNumber || ""; }catch(e){}
+  }
+
+  if(!BIN){
+    // We can still query by street/house using Open Data, but BIN filtering is far more reliable.
+    // Continue, but warn.
+    console.warn("No BIN; results may be noisy.");
+  }
+
+  document.querySelector("#perm_"+idx).textContent="…";
+  document.querySelector("#jobs_"+idx).textContent="…";
+  document.querySelector("#insp_"+idx).textContent="…";
+
+  const headers = socrata ? {"X-App-Token":socrata} : {};
+
+  // PERMITS — ipu4-2q9a. Use BIN if available; else fallback to house/street contains filter (noisy).
+  async function count(url){
+    const r = await fetch(url,{headers});
+    const j = await r.json();
+    const val = Number(j?.[0]?.count ?? NaN);
+    return Number.isFinite(val) ? val : null;
+  }
+
+  let base = "https://data.cityofnewyork.us/resource/ipu4-2q9a.json?$select=count(*)";
+  let filterBIN = BIN ? `&bin__=${encodeURIComponent(BIN)}` : "";
+  let filterLoose = (!BIN) ? `&address_house_number=${encodeURIComponent(addr.house)}&street_name=${encodeURIComponent(addr.street)}` : "";
+
+  try{
+    const n1 = await count(`${base}&permit_status='ISSUED'${filterBIN}${filterLoose}`);
+    document.querySelector("#perm_"+idx).textContent = n1 ?? "—";
+  }catch{ document.querySelector("#perm_"+idx).textContent="—"; }
+
+  try{
+    const n2 = await count(`${base}&job_status='SIGNED OFF'${filterBIN}${filterLoose}`);
+    document.querySelector("#jobs_"+idx).textContent = n2 ?? "—";
+  }catch{ document.querySelector("#jobs_"+idx).textContent="—"; }
+
+  try{
+    const n3 = await count(`${base}&job_status not in('SIGNED OFF','COMPLETED','CLOSED')${filterBIN}${filterLoose}`);
+    document.querySelector("#insp_"+idx).textContent = n3 ?? "—";
+  }catch{ document.querySelector("#insp_"+idx).textContent="—"; }
+}
+</script>
+</body>
+</html>
